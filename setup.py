@@ -1,6 +1,5 @@
-# encoding: utf-8
+# -*- coding: utf-8 -*-
 
-import glob
 from setuptools import setup
 
 
@@ -15,7 +14,7 @@ def install_data_files_hack():
 
 install_data_files_hack()
 
-requires = ['flask', 'pygments', 'dulwich>=0.8.6', 'httpauth', 'humanize']
+requires = ['pygments', 'dulwich>=0.8.6', 'Django>=1.4']
 
 try:
     import argparse  # not available for Python 2.6
@@ -24,19 +23,17 @@ except ImportError:
 
 
 setup(
-    name='klaus',
-    version='0.3',
-    author='Jonas Haag',
-    author_email='jonas@lophus.org',
+    name='django-klaus',
+    version='0.1.1',
+    author='Marcin Biernat, Jonas Haag',
+    author_email='mb@marcinbiernat.pl, jonas@lophus.org',
     packages=['klaus'],
-    scripts=['bin/klaus'],
     include_package_data=True,
     zip_safe=False,
-    url='https://github.com/jonashaag/klaus',
-    description='The first Git web viewer that Just Works™.',
+    url='https://github.com/biern/django-klaus',
+    description='Git web viewer app for django.',
     long_description=__doc__,
     classifiers=[
-        "Development Status :: 5 - Production/Stable",
         "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
         "Topic :: Internet :: WWW/HTTP :: WSGI :: Application",
         "Topic :: Software Development :: Version Control",
@@ -49,4 +46,3 @@ setup(
     ],
     install_requires=requires,
 )
-

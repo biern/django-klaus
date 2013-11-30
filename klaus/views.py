@@ -1,32 +1,54 @@
+# -*- coding: utf-8 -*-
 import os
 import stat
 
-from flask import request, render_template, current_app
-from flask.views import View
-
-from werkzeug.wrappers import Response
-from werkzeug.exceptions import NotFound
+from django.conf import settings
+from django.http import HttpResponse
+from django.views.generic import TemplateView
 
 from dulwich.objects import Blob
 
-from klaus import markup
+from klaus import markup, utils
 from klaus.utils import parent_directory, subpaths, pygmentize, \
-                        force_unicode, guess_is_binary, guess_is_image
+    force_unicode, guess_is_binary, guess_is_image
+from klaus.repo import RepoManager, RepoException
 
 
-def repo_list():
+class KlausContextMixin(object):
+    def get_context_data(self, **ctx):
+        context = super(KlausContextMixin, self).get_context_data(**ctx)
+        context['KLAUS_SITE_NAME'] = getattr(
+            settings, 'KLAUS_SITE_NAME', 'Klaus GIT browser')
+        context['KLAUS_VERSION'] = utils.KLAUS_VERSION
+        return context
+
+
+class KlausTemplateView(KlausContextMixin, TemplateView):
+    pass
+
+
+class RepoListView(KlausTemplateView):
     """Shows a list of all repos and can be sorted by last update. """
-    if 'by-last-update' in request.args:
-        sort_key = lambda repo: repo.get_last_updated_at()
-        reverse = True
-    else:
-        sort_key = lambda repo: repo.name
-        reverse = False
-    repos = sorted(current_app.repos, key=sort_key, reverse=reverse)
-    return render_template('repo_list.html', repos=repos)
+
+    template_name = 'klaus/repo_list.html'
+    view_name = 'repo-list'
+
+    def get_context_data(self, **ctx):
+        context = super(RepoListView, self).get_context_data(**ctx)
+
+        if 'by-last-update' in self.request.GET:
+            sort_key = lambda repo: repo.get_last_updated_at()
+            reverse = True
+        else:
+            sort_key = lambda repo: repo.name
+            reverse = False
+
+        context['repos'] = sorted(RepoManager.all_repos(), key=sort_key,
+                                  reverse=reverse)
+        return context
 
 
-class BaseRepoView(View):
+class BaseRepoView(KlausTemplateView):
     """
     Base for all views with a repo context.
 
@@ -39,39 +61,34 @@ class BaseRepoView(View):
     is "/foo/bar", only commits related to "/foo/bar" are displayed, and if
     `rev` is "master", the history of the "master" branch is displayed.
     """
-    def __init__(self, view_name, template_name=None):
-        self.view_name = view_name
-        self.template_name = template_name
-        self.context = {}
 
-    def dispatch_request(self, repo, rev=None, path=''):
-        self.make_template_context(repo, rev, path.strip('/'))
-        return self.get_response()
+    view_name = None
+    "required by templates"
 
-    def get_response(self):
-        return render_template(self.template_name, **self.context)
+    def get_context_data(self, **ctx):
+        context = super(BaseRepoView, self).get_context_data(**ctx)
 
-    def make_template_context(self, repo, rev, path):
-        try:
-            repo = current_app.repo_map[repo]
-        except KeyError:
-            raise NotFound("No such repository %r" % repo)
+        repo = RepoManager.get_repo(self.kwargs['repo'])
+        rev = self.kwargs.get('rev')
+        path = self.kwargs.get('path')
+        if isinstance(path, unicode):
+            path = path.encode("utf-8")
 
         if rev is None:
             rev = repo.get_default_branch()
             if rev is None:
-                raise NotFound("Empty repository")
+                raise RepoException("Empty repository")
         try:
             commit = repo.get_commit(rev)
         except KeyError:
-            raise NotFound("No such commit %r" % rev)
+            raise RepoException("No such commit %r" % rev)
 
         try:
             blob_or_tree = repo.get_blob_or_tree(commit, path)
         except KeyError:
-            raise NotFound("File not found")
+            raise RepoException("File not found")
 
-        self.context = {
+        context.update({
             'view': self.view_name,
             'repo': repo,
             'rev': rev,
@@ -81,27 +98,33 @@ class BaseRepoView(View):
             'path': path,
             'blob_or_tree': blob_or_tree,
             'subpaths': list(subpaths(path)) if path else None,
-        }
+        })
+
+        return context
 
 
 class TreeViewMixin(object):
     """
-    Implements the logic required for displaying the current directory in the sidebar
-    """
-    def make_template_context(self, *args):
-        super(TreeViewMixin, self).make_template_context(*args)
-        self.context['root_tree'] = self.listdir()
+    Implements the logic required for displaying the current directory in the
+    sidebar
 
-    def listdir(self):
+    """
+    def get_context_data(self, **ctx):
+        context = super(TreeViewMixin, self).get_context_data(**ctx)
+        context['root_tree'] = self.listdir(
+            context['repo'], context['commit'], context['path'],
+            context['blob_or_tree'])
+        return context
+
+    def listdir(self, repo, commit, root_directory, blob_or_tree):
         """
         Returns a list of directories and files in the current path of the
         selected commit
         """
-        root_directory = self.get_root_directory()
-        root_tree = self.context['repo'].get_blob_or_tree(
-            self.context['commit'],
-            root_directory
-        )
+        root_directory = root_directory or ''
+        root_directory = self.get_root_directory(
+            root_directory, blob_or_tree)
+        root_tree = repo.get_blob_or_tree(commit, root_directory)
 
         dirs, files = [], []
         for entry in root_tree.iteritems():
@@ -110,48 +133,50 @@ class TreeViewMixin(object):
                 dirs.append((name.lower(), name, entry.path))
             else:
                 files.append((name.lower(), name, entry.path))
+
         files.sort()
         dirs.sort()
 
         if root_directory:
             dirs.insert(0, (None, '..', parent_directory(root_directory)))
 
-        return {'dirs' : dirs, 'files' : files}
+        return {'dirs': dirs, 'files': files}
 
-    def get_root_directory(self):
-        root_directory = self.context['path']
-        if isinstance(self.context['blob_or_tree'], Blob):
+    def get_root_directory(self, root_directory, blob_or_tree):
+        if isinstance(blob_or_tree, Blob):
             # 'path' is a file (not folder) name
             root_directory = parent_directory(root_directory)
         return root_directory
 
 
 class HistoryView(TreeViewMixin, BaseRepoView):
-    """ Show commits of a branch + path, just like `git log`. With pagination. """
-    def make_template_context(self, *args):
-        super(HistoryView, self).make_template_context(*args)
+    """
+    Show commits of a branch + path, just like `git log`. With
+    pagination.
+    """
 
-        try:
-            page = int(request.args.get('page'))
-        except (TypeError, ValueError):
-            page = 0
+    template_name = 'klaus/history.html'
+    view_name = 'history'
 
-        self.context['page'] = page
+    def get_context_data(self, **ctx):
+        context = super(HistoryView, self).get_context_data(**ctx)
+
+        page = context['page'] = int(self.request.GET.get('page', 0))
 
         if page:
             history_length = 30
-            skip = (self.context['page']-1) * 30 + 10
+            skip = (page - 1) * 30 + 10
             if page > 7:
-                self.context['previous_pages'] = [0, 1, 2, None] + range(page)[-3:]
+                context['previous_pages'] = [0, 1, 2, None] + range(page)[-3:]
             else:
-                self.context['previous_pages'] = xrange(page)
+                context['previous_pages'] = xrange(page)
         else:
             history_length = 10
             skip = 0
 
-        history = self.context['repo'].history(
-            self.context['rev'],
-            self.context['path'],
+        history = context['repo'].history(
+            context['rev'],
+            context['path'],
             history_length + 1,
             skip
         )
@@ -163,59 +188,68 @@ class HistoryView(TreeViewMixin, BaseRepoView):
         else:
             more_commits = False
 
-        self.context.update({
+        context.update({
             'history': history,
             'more_commits': more_commits,
         })
 
+        return context
+
 
 class BlobViewMixin(object):
-    def make_template_context(self, *args):
-        super(BlobViewMixin, self).make_template_context(*args)
-        self.context['filename'] = os.path.basename(self.context['path'])
+    def get_context_data(self, **ctx):
+        context = super(BlobViewMixin, self).get_context_data(**ctx)
+        context['filename'] = os.path.basename(context['path'])
+        return context
 
 
 class BlobView(BlobViewMixin, TreeViewMixin, BaseRepoView):
     """ Shows a file rendered using ``pygmentize`` """
-    def make_template_context(self, *args):
-        super(BlobView, self).make_template_context(*args)
 
-        if not isinstance(self.context['blob_or_tree'], Blob):
-            raise NotFound("Not a blob")
+    template_name = 'klaus/view_blob.html'
+    view_name = 'blob'
 
-        binary = guess_is_binary(self.context['blob_or_tree'])
-        too_large = sum(map(len, self.context['blob_or_tree'].chunked)) > 100*1024
+    def get_context_data(self, **ctx):
+        context = super(BlobView, self).get_context_data(**ctx)
+
+        if not isinstance(context['blob_or_tree'], Blob):
+            raise RepoException("Not a blob")
+
+        binary = guess_is_binary(context['blob_or_tree'])
+        too_large = sum(map(len, context['blob_or_tree'].chunked)) > 100 * 1024
 
         if binary:
-            self.context.update({
+            context.update({
                 'is_markup': False,
                 'is_binary': True,
                 'is_image': False,
             })
-            if guess_is_image(self.context['filename']):
-                self.context.update({
+            if guess_is_image(context['filename']):
+                context.update({
                     'is_image': True,
                 })
         elif too_large:
-            self.context.update({
+            context.update({
                 'too_large': True,
                 'is_markup': False,
                 'is_binary': False,
             })
         else:
-            render_markup = 'markup' not in request.args
+            render_markup = 'markup' not in self.request.GET
             rendered_code = pygmentize(
-                force_unicode(self.context['blob_or_tree'].data),
-                self.context['filename'],
+                force_unicode(context['blob_or_tree'].data),
+                context['filename'],
                 render_markup
             )
-            self.context.update({
+            context.update({
                 'too_large': False,
-                'is_markup': markup.can_render(self.context['filename']),
+                'is_markup': markup.can_render(context['filename']),
                 'render_markup': render_markup,
                 'rendered_code': rendered_code,
                 'is_binary': False,
             })
+
+        return context
 
 
 class RawView(BlobViewMixin, BaseRepoView):
@@ -223,12 +257,20 @@ class RawView(BlobViewMixin, BaseRepoView):
     Shows a single file in raw for (as if it were a normal filesystem file
     served through a static file server)
     """
-    def get_response(self):
-        return Response(self.context['blob_or_tree'].chunked)
+    view_name = 'raw'
+
+    def dispatch(self, *args, **kwargs):
+        context = self.get_context_data()
+        return HttpResponse(context['blob_or_tree'].chunked)
 
 
-#                                     TODO v
-history = HistoryView.as_view('history', 'history', 'history.html')
-commit = BaseRepoView.as_view('commit', 'commit', 'view_commit.html')
-blob = BlobView.as_view('blob', 'blob', 'view_blob.html')
-raw = RawView.as_view('raw', 'raw')
+class CommitView(BaseRepoView):
+    template_name = 'klaus/view_commit.html'
+    view_name = 'commit'
+
+
+repo_list = RepoListView.as_view()
+history = HistoryView.as_view()
+commit = CommitView.as_view()
+blob = BlobView.as_view()
+raw = RawView.as_view()

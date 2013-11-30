@@ -1,0 +1,17 @@
+  <div class=pagination>
+    {% if page %}
+      {% for n in previous_pages %}
+        {% if n < 0 %}
+          <span class=n>...</span>
+        {% else %}
+          <a href="?page={{n}}" class=n>{{ n }}</a>
+        {% endif %}
+      {% endfor %}
+    {% endif %}
+    {% if more_commits %}
+      <a href="?page={{ page|add:1 }}">»»</a>
+    {% elif page %}
+      <span>»»</span>
+    {% endif%}
+  </div>
+  <div class=clearfloat></div>

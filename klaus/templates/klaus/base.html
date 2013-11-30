@@ -1,0 +1,51 @@
+{% extends 'klaus/skeleton.html' %}
+{% load klaus %}
+
+{% block title %}
+  {{ repo.name }} ({{ rev|shorten_sha1 }})
+{% endblock %}
+
+{% block breadcrumbs %}
+  <span>
+    <a href="{% url 'klaus:history' repo=repo.name %}">{{ repo.name }}</a>
+    <span class=slash>/</span>
+    <a href="{% url 'klaus:history' repo=repo.name rev=rev %}">{{ rev|shorten_sha1 }}</a>
+  </span>
+
+  {% if subpaths %}
+  <span>
+    {% for name, subpath in subpaths %}
+      {% if loop.last %}
+      <a href="">{{ name }}</a>
+      {% else %}
+      <a href="{% url 'klaus:history' repo=repo.name rev=rev path=subpath %}">{{ name }}</a>
+      <span class=slash>/</span>
+      {% endif %}
+    {% endfor %}
+  </span>
+  {% endif %}
+{% endblock %}
+
+{% block extra_header %}
+<div class=branch-selector>
+  <span>{{ rev|shorten_sha1 }}</span>
+  <div>
+    <ul class=branches>
+      {% for branch in branches %}
+      <li>
+        <a href="{% if path %}{% url 'klaus:'|add:view repo=repo.name rev=branch path=path %}{% else %}{% url 'klaus:'|add:view repo=repo.name rev=branch %}{% endif %}">{{ branch }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% if tags %}
+    <ul class=tags>
+      {% for tag in tags %}
+      <li>
+        <a href="{% if path %}{% url 'klaus:'|add:view repo=repo.name rev=tag path=path %}{% else %}{% url 'klaus:'|add:view repo=repo.name rev=tag %}{% endif %}">{{ tag }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

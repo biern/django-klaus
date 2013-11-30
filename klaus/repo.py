@@ -1,10 +1,46 @@
+# -*- coding: utf-8 -*-
+from datetime import datetime
 import os
-import cStringIO
+import StringIO
 
-import dulwich, dulwich.patch
+from django.conf import settings
 
-from klaus.utils import check_output, force_unicode
+import dulwich
+import dulwich.patch
+import dulwich.repo
+
+from klaus.utils import check_output, force_unicode, extract_author_name
 from klaus.diff import prepare_udiff
+
+
+class RepoException(Exception):
+    pass
+
+
+class FancyCommit(object):
+    """ Provides some helpers for common operations """
+
+    def __init__(self, commit, repo):
+        self.commit = commit
+        self.repo = repo
+
+    def __getattr__(self, attr):
+        return getattr(self.commit, attr)
+
+    @property
+    def commit_datetime(self):
+        return datetime.utcfromtimestamp(self.commit.commit_time)
+
+    @property
+    def author_name(self):
+        return extract_author_name(self.author)
+
+    @property
+    def short_message(self):
+        return self.message.split('\n')[0]
+
+    def repo_diff(self):
+        return self.repo.commit_diff(self)
 
 
 class FancyRepo(dulwich.repo.Repo):
@@ -15,10 +51,11 @@ class FancyRepo(dulwich.repo.Repo):
 
     def get_last_updated_at(self):
         refs = [self[ref_hash] for ref_hash in self.get_refs().itervalues()]
-        refs.sort(key=lambda obj:getattr(obj, 'commit_time', None),
+        refs.sort(key=lambda obj: getattr(obj, 'commit_time', None),
                   reverse=True)
         if refs:
-            return refs[0].commit_time
+            return datetime.utcfromtimestamp(refs[0].commit_time)
+
         return None
 
     def get_description(self):
@@ -38,9 +75,11 @@ class FancyRepo(dulwich.repo.Repo):
                 obj = self[key]
                 if isinstance(obj, dulwich.objects.Tag):
                     obj = self[obj.object[1]]
-                return obj
+
+                return FancyCommit(obj, self)
             except KeyError:
                 pass
+
         raise KeyError(rev)
 
     def get_default_branch(self):
@@ -104,12 +143,14 @@ class FancyRepo(dulwich.repo.Repo):
             cmd.extend(['--', path])
 
         sha1_sums = check_output(cmd, cwd=os.path.abspath(self.path))
-        return [self[sha1] for sha1 in sha1_sums.strip().split('\n')]
+        return [FancyCommit(self[sha1], self) for sha1 in
+                sha1_sums.strip().split('\n')]
 
-    def get_blob_or_tree(self, commit, path):
+    def get_blob_or_tree(self, commit, path=None):
         """ Returns the Git tree or blob object for `path` at `commit`. """
         tree_or_blob = self[commit.tree]  # Still a tree here but may turn into
                                           # a blob somewhere in the loop.
+        path = path or ''
         for part in path.strip('/').split('/'):
             if part:
                 if isinstance(tree_or_blob, dulwich.objects.Blob):
@@ -143,7 +184,7 @@ class FancyRepo(dulwich.repo.Repo):
                 # Dulwich will handle that.
                 pass
 
-            stringio = cStringIO.StringIO()
+            stringio = StringIO.StringIO()
             dulwich.patch.write_object_diff(stringio, self.object_store,
                                             (oldpath, oldmode, oldsha),
                                             (newpath, newmode, newsha))
@@ -159,3 +200,26 @@ class FancyRepo(dulwich.repo.Repo):
                 }
             else:
                 yield files[0]
+
+
+class RepoManager(object):
+    _repos = []
+
+    @classmethod
+    def all_repos(cls):
+        return cls._repos
+
+    @classmethod
+    def add_repo(cls, path):
+        cls._repos.append(FancyRepo(path))
+
+    @classmethod
+    def get_repo(cls, repo_name):
+        for r in cls._repos:
+            if r.name == repo_name:
+                return r
+
+        raise Exception("No such repository %s".format(repo_name))
+
+
+map(RepoManager.add_repo, getattr(settings, 'KLAUS_REPO_PATHS', []))

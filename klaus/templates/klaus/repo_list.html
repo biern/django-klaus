@@ -1,0 +1,40 @@
+{% extends 'klaus/skeleton.html' %}
+{% load static %}
+
+{% block title %}Repository list{% endblock %}
+
+{% block content %}
+
+<h2>
+  Repositories
+  <span>
+    (<a href="?by-last-update=yep">order by last update</a>)
+  </span>
+</h2>
+<ul class=repolist>
+  {% for repo in repos %}
+    {% with last_updated_at=repo.get_last_updated_at description=repo.get_description %}
+  <li>
+    <a
+       {% if last_updated_at %}
+       href="{% url 'klaus:history' repo=repo.name %}"
+       {% endif %}
+       >
+      <div class=name>{{ repo.name }}</div>
+      {% if description %}
+      <div class=description>{{ description }}</div>
+      {% endif %}
+      <div class=last-updated>
+        {% if last_updated_at %}
+        last updated {{ last_updated_at|timesince }}
+        {% else %}
+        no commits yet
+        {% endif %}
+      </div>
+    </a>
+  </li>
+  {% endwith %}
+  {% endfor %}
+</ul>
+
+{% endblock %}

@@ -1,8 +1,6 @@
 # encoding: utf-8
 import os
 import re
-import time
-import datetime
 import mimetypes
 import locale
 try:
@@ -14,44 +12,7 @@ from pygments import highlight
 from pygments.lexers import get_lexer_for_filename, guess_lexer, ClassNotFound
 from pygments.formatters import HtmlFormatter
 
-from humanize import naturaltime
-
 from klaus import markup
-
-
-class SubUri(object):
-    """
-    WSGI middleware that tweaks the WSGI environ so that it's possible to serve
-    the wrapped app (klaus) under a sub-URL and/or to use a different HTTP
-    scheme (http:// vs. https://) for proxy communication.
-
-    This is done by making your proxy pass appropriate HTTP_X_SCRIPT_NAME and
-    HTTP_X_SCHEME headers.
-
-    For instance if you have klaus mounted under /git/ and your site uses SSL
-    (but your proxy doesn't), make it pass ::
-
-        X-Script-Name = '/git'
-        X-Scheme = 'https'
-
-    Snippet stolen from http://flask.pocoo.org/snippets/35/
-    """
-    def __init__(self, app):
-        self.app = app
-
-    def __call__(self, environ, start_response):
-        script_name = environ.get('HTTP_X_SCRIPT_NAME', '')
-        if script_name:
-            environ['SCRIPT_NAME'] = script_name.rstrip('/')
-
-        if script_name and environ['PATH_INFO'].startswith(script_name):
-            # strip `script_name` from PATH_INFO
-            environ['PATH_INFO'] = environ['PATH_INFO'][len(script_name):]
-
-        if 'HTTP_X_SCHEME' in environ:
-            environ['wsgi.url_scheme'] = environ['HTTP_X_SCHEME']
-
-        return self.app(environ, start_response)
 
 
 class KlausFormatter(HtmlFormatter):
@@ -81,15 +42,6 @@ def pygmentize(code, filename=None, render_markup=True):
         lexer = guess_lexer(code)
 
     return highlight(code, lexer, KlausFormatter())
-
-
-def timesince(when, now=time.time):
-    """ Returns the difference between `when` and `now` in human readable form. """
-    return naturaltime(now() - when)
-
-
-def formattimestamp(timestamp):
-    return datetime.datetime.fromtimestamp(timestamp).strftime('%b %d, %Y - %H:%M:%S')
 
 
 def guess_is_binary(dulwich_blob):
@@ -144,12 +96,6 @@ def extract_author_name(email):
     return email
 
 
-def shorten_sha1(sha1):
-    if re.match('[a-z\d]{20,40}', sha1):
-        sha1 = sha1[:10]
-    return sha1
-
-
 def parent_directory(path):
     return os.path.split(path)[0]
 
@@ -165,10 +111,6 @@ def subpaths(path):
     for part in path.split('/'):
         seen.append(part)
         yield part, '/'.join(seen)
-
-
-def shorten_message(msg):
-    return msg.split('\n')[0]
 
 
 try:
@@ -197,3 +139,6 @@ def guess_git_revision():
             ['git', 'log', '--format=%h', '-n', '1'],
             cwd=git_dir
         ).strip()
+
+
+KLAUS_VERSION = guess_git_revision() or '0.3'

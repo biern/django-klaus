@@ -1,4 +1,6 @@
-{% extends 'base.html' %}
+{% extends 'klaus/base.html' %}
+
+{% load klaus %}
 
 {% block extra_header %}{% endblock %} {# no branch selector on commits #}
 
@@ -12,34 +14,37 @@
   {# TODO code duplication in history.html #}
   <div class=commit>
     <span class=line1>
-      <span>{{ commit.message|force_unicode }}</span>
+      <span>{{ commit.message }}</span>
     </span>
     <span class=line2>
       <span>
-        {{ commit.author|force_unicode|extract_author_name }}
+        {{ commit.author_name }}
       </span>
-      <span title="{{ commit.commit_time|formattimestamp  }}">
-        {{ commit.commit_time|timesince }}
+      <span title="{{ commit.commit_datetime  }}">
+        {{ commit.commit_datetime|timesince }}
       </span>
     </span>
     <span class=clearfloat></span>
   </div>
 
   <div class=diff>
-    {% for file in repo.commit_diff(commit) %}
+    {# {% for file in repo.commit_diff(commit) %} #}
+    {% for file in commit.repo_diff %}
 
-      {% set fileno = loop.index0 %}
+      {% with fileno=loop.index0 %}
 
       <div class=filename>
-        {# TODO dulwich doesn't do rename recognition
+        {# TODO dulwich doesn't do rename recognition #}
+        {% comment %}
         {% if file.old_filename != file.new_filename %}
           {{ file.old_filename }} →
-        {% endif %}#}
+        {% endif %}
+        {% endcomment %}
           {% if file.new_filename == '/dev/null' %}
-            <del>{{ file.old_filename|force_unicode }}</del>
+            <del>{{ file.old_filename }}</del>
           {% else %}
-            <a href="{{ url_for('blob', repo=repo.name, rev=rev, path=file.new_filename) }}">
-              {{ file.new_filename|force_unicode }}
+            <a href="{% url 'klaus:blob' repo=repo.name rev=rev path=file.new_filename %}">
+              {{ file.new_filename }}
             </a>
           {% endif %}
       </div>
@@ -49,41 +54,41 @@
         <table>
           {% for chunk in file.chunks %}
 
-            {%- for line in chunk -%}
+            {% for line in chunk %}
               <tr>
 
                 {#- left column: linenos -#}
-                {%- if line.old_lineno -%}
+                {% if line.old_lineno %}
                   <td class=linenos><a href="#{{fileno}}-L-{{line.old_lineno}}">{{ line.old_lineno }}</a></td>
-                  {%- if line.new_lineno -%}
+                  {% if line.new_lineno %}
                     <td class=linenos><a href="#{{fileno}}-L-{{line.old_lineno}}">{{ line.new_lineno }}</a></td>
-                  {%- else -%}
+                  {% else %}
                     <td class=linenos></td>
-                  {%- endif -%}
-                {%- else %}
-                  {%- if line.old_lineno -%}
+                  {% endif %}
+                {% else %}
+                  {% if line.old_lineno %}
                     <td class=linenos><a href="#{{fileno}}-R-{{line.old_lineno}}">{{ line.new_lineno }}</a></td>
-                  {%- else -%}
+                  {% else %}
                     <td class=linenos></td>
-                  {%- endif -%}
+                  {% endif %}
                   <td class=linenos><a href="#{{fileno}}-R-{{line.new_lineno}}">{{ line.new_lineno }}</a></td>
                 {% endif %}
 
                 {#- right column: code -#}
                 <td class={{line.action}}>
                   {#- lineno anchors -#}
-                  {%- if line.old_lineno -%}
+                  {% if line.old_lineno %}
                     <a name="{{fileno}}-L-{{line.old_lineno}}"></a>
-                  {%- else -%}
+                  {% else %}
                     <a name="{{fileno}}-R-{{line.new_lineno}}"></a>
-                  {%- endif -%}
+                  {% endif %}
 
                   {#- the actual line of code -#}
-                  <span class=line>{% autoescape false %}{{ line.line|force_unicode }}{% endautoescape %}</span>
+                  <span class=line>{{ line.line|safe }}</span>
                 </td>
 
               </tr>
-            {%- endfor -%} {# lines #}
+            {% endfor %} {# lines #}
 
             {% if not loop.last %}
               <tr class=sep>
@@ -91,12 +96,14 @@
               </tr>
             {% endif %}
 
-          {%- endfor -%} {# chunks #}
+          {% endfor %} {# chunks #}
         </table>
 
       {% else %}
         <div class=binarydiff>Binary diff not shown</div>
       {% endif %}
+
+      {% endwith %}
 
     {% endfor %}
   </div>

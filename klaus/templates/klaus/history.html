@@ -1,0 +1,66 @@
+{% extends 'klaus/base.html' %}
+
+{% block title %}
+  History of
+  {% if path %}{{ path }} - {% endif %}
+  {{ block.super }}
+{% endblock %}
+
+{% block content %}
+
+{% include "klaus/includes/tree.inc.html" %}
+
+<div>
+  <div class=history>
+    <h2>
+      {% if subpaths %}
+        History of
+        {% for name, subpath in subpaths %}
+          {{ name }}
+          {% if not loop.last %}
+            <span class=slash>/</span>
+          {% endif %}
+        {% endfor %}
+      {% else %}
+        Commit History
+      {% endif %}
+      <span>
+        @<a href="{% if path %}{% url 'klaus:'|add:view repo=repo.name rev=rev path=path %}{% else %}{% url 'klaus:'|add:view repo=repo.name rev=rev %}{% endif %}">{{ rev }}</a>
+      </span>
+      {% comment %}
+      {# TODO: has no way to work atm #}
+      {% if USE_SMARTHTTP %}
+          <code>git clone {{ url_for('history', repo=repo.name, _external=True) }}</code>
+      {% endif %}
+      {% endcomment %}
+    </h2>
+
+    {% include "klaus/includes/pagination.html" %}
+
+    <ul>
+    {% for commit in history %}
+      <li>
+        <a class=commit href="{% url 'klaus:commit' repo=repo.name rev=commit.id %}">
+          <span class=line1>
+            <span>{{ commit.short_message }}</span>
+          </span>
+          <span class=line2>
+            <span>
+              {{ commit.author_name }}
+            </span>
+            <span title="{{ commit.commit_time }}">
+              {{ commit.commit_datetime|timesince }}
+            </span>
+          </span>
+          <span class=clearfloat></span>
+        </a>
+      </li>
+    {% endfor %}
+    </ul>
+  </div>
+
+    {% include "klaus/includes/pagination.html" %}
+
+</div>
+
+{% endblock %}
