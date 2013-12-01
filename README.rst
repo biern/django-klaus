@@ -1,78 +1,52 @@
-klaus: a simple Git web viewer that Just Works™.
-================================================
+django-klaus - port of klaus Git web viewer to django
+=====================================================
 
-(If it doesn't Just Work for you, please file a bug.)
+`Klaus <http://github.com/jonashaag/klaus>`_ is a simple Git web viewer that Just Works™ originally created by Jonas Haag, written in Flask.
 
-:Demo: http://klausdemo.lophus.org
-:Mailing list: http://groups.google.com/group/klaus-users
-:On PyPI: http://pypi.python.org/pypi/klaus/
-:License: ISC (BSD)
+If you need just to host a standalone Git web viewer, then check out the `original <http://github.com/jonashaag/klaus>`_ which makes it easier. On the other hand, if you need to integrate a Git viewer with a django application, then this is a way to go!
 
-Contributing
+
+Dependencies
 ------------
-Please do it!
 
-I'm equally happy with bug reports/feature ideas and code contributions.
-If you have any questions/issues, I'm happy to help!
+ - ``dulwich`` is used to handle git repositories along with ``pygments`` to highlight the results.
 
-For starters, `here are a few ideas what to work on. <https://github.com/jonashaag/klaus/issues>`_ :-)
-
-Features
---------
-* Super easy to set up -- no configuration required
-* Syntax highlighting
-* Git Smart HTTP support
-
-
-|img1|_ |img2|_ |img3|_
-
-.. |img1| image:: https://github.com/jonashaag/klaus/raw/master/assets/commit-view.thumb.gif
-.. |img2| image:: https://github.com/jonashaag/klaus/raw/master/assets/tree-view.thumb.gif
-.. |img3| image:: https://github.com/jonashaag/klaus/raw/master/assets/blob-view.thumb.gif
-
-.. _img1: https://github.com/jonashaag/klaus/raw/master/assets/commit-view.gif
-.. _img2: https://github.com/jonashaag/klaus/raw/master/assets/tree-view.gif
-.. _img3: https://github.com/jonashaag/klaus/raw/master/assets/blob-view.gif
+ - ``ReST`` and ``Markdown`` rendering is supported if ``docutils`` / ``markdown`` is available
 
 
 Installation
 ------------
+
 ::
 
-   pip install klaus
+    pip install django-klaus
 
 
-Usage
------
+in settings.py:
+::
 
-See also: `Klaus wiki <https://github.com/jonashaag/klaus/wiki>`_
+    INSTALLED_APPS = (
+        (...),
+        'klaus'
+    )
 
-Using the ``klaus`` script
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-**NOTE:** This is intended for testing/low-traffic local installations *only*!
-The `klaus` script uses wsgiref_ internally which doesn't scale *at all*
-(in fact it's single-threaded and non-asynchronous).
+in urls.py:
+::
 
-To run klaus using the default options::
-
-   klaus [repo1 [repo2 ...]]
-
-For more options, see::
-
-   klaus --help
+    url(r'^klaus/', include('klaus.urls', namespace='klaus'))
 
 
-Using a real server
-^^^^^^^^^^^^^^^^^^^
-The ``klaus`` module contains a ``make_app`` function which returns a WSGI app.
+Configuration
+-------------
 
-An example WSGI helper script is provided with klaus (see ``klaus/wsgi.py``),
-configuration being read from environment variables. Use it like this (uWSGI example)::
+In ``settings.py`` set ``KLAUS_REPO_PATHS`` to list of paths to repositories you would like to list.
 
-   uwsgi -w klaus.wsgi \
-         --env KLAUS_SITE_TITLE="Klaus Demo" \
-         --env KLAUS_REPOS="/path/to/repo1 /path/to/repo2 ..." \
-         ...
+::
+
+    KLAUS_REPO_PATHS = ['/path/to/git/repo/']
 
 
-.. _wsgiref: http://docs.python.org/library/wsgiref.html
+Repositories can be also managed dynamically using ``klaus.repo.RepoManager`` class.
+
+
+For extra information reference the `original <http://github.com/jonashaag/klaus>`_
