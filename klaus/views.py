@@ -73,8 +73,10 @@ class BaseRepoView(KlausTemplateView):
         path = self.kwargs.get('path')
         if isinstance(path, unicode):
             path = path.encode("utf-8")
-
-        if rev is None:
+	if isinstance(rev, unicode):
+            rev = rev.encode("utf-8")
+        
+	if rev is None:
             rev = repo.get_default_branch()
             if rev is None:
                 raise RepoException("Empty repository")
